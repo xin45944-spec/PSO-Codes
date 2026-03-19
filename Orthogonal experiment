@@ -1,0 +1,1294 @@
+%% L25(5^6)正交试验综合分析：全指标最优化求解版（含详细交互分析）
+clear; clc;
+
+% ==================== 1. 数据输入 ====================
+fprintf('========== L25(5^6)正交试验综合分析 (全指标最优化版) ==========\n\n');
+
+% 1.1 定义因素名称
+factor_names = {'因子1', '因子2', '因子3', '因子4', '因子5', '因子6'};
+% 1.2 定义响应名称
+response_names = {'过电位', '动力学', '颗粒', '平均容量衰减'};
+
+% 1.3 L25(5^6)正交表数据
+orthogonal_matrix = [
+    1, 1, 1, 1, 1, 1; 1, 2, 2, 2, 2, 2; 1, 3, 3, 3, 3, 3; 1, 4, 4, 4, 4, 4; 1, 5, 5, 5, 5, 5;
+    2, 1, 2, 3, 4, 5; 2, 2, 3, 4, 5, 1; 2, 3, 4, 5, 1, 2; 2, 4, 5, 1, 2, 3; 2, 5, 1, 2, 3, 4;
+    3, 1, 3, 5, 2, 4; 3, 2, 4, 1, 3, 5; 3, 3, 5, 2, 4, 1; 3, 4, 1, 3, 5, 2; 3, 5, 2, 4, 1, 3;
+    4, 1, 4, 2, 5, 3; 4, 2, 5, 3, 1, 4; 4, 3, 1, 4, 2, 5; 4, 4, 2, 5, 3, 1; 4, 5, 3, 1, 4, 2;
+    5, 1, 5, 4, 3, 2; 5, 2, 1, 5, 4, 3; 5, 3, 2, 1, 5, 4; 5, 4, 3, 2, 1, 5; 5, 5, 4, 3, 2, 1
+];
+
+% 1.4 试验结果数据
+overpotential = [0.000193987553882726; 0.00021469148541996804; 0.0002564216208716322; 0.00029506787496038045; 0.00035408704199683033; 0.0007970902393026943; 0.0009906694294770206; 0.0005428031664025358; 0.0006005615879556261; 0.0006778940792393034; 0.0008006436450079244; 0.0009063740824088743; 0.001070091109350238; 0.0012943151980982553; 0.0007046444849445329; 0.0032608584786053916; 0.001793012868462756; 0.002016503343898576; 0.00228274141045959; 0.002634830221870048; 0.003957893502377177; 0.0046581011093502385; 0.00568930776545166; 0.0031241714738510307; 0.0035460244057052303];
+kinetics = [25.343431694136292; 31.37582892773373; 44.40490368382408; 54.85009745800319; 78.03505185419974; 111.54333211410456; 165.05647385103015; 53.94459458003173; 67.11318286846276; 83.1550734041203; 84.72998906497618; 107.79592475594315; 146.2439481774961; 208.86535182250392; 67.26639128367673; 508.5666877971473; 157.645496038035; 201.7281141045958; 256.51270206022184; 340.22511251980967; 434.4572583201265; 597.6587480190179; 883.3972107765454; 268.81631061806667; 348.03357052297986];
+particle = [0.23438783708399388; 0.3045603323296355; 0.42037956166402496; 0.566676980982567; 0.8302816196513466; 4.5751627258320156; 7.058688938193347; 1.9844663153724234; 2.338528811410461; 3.124405502377182; 4.16658496038035; 5.866512773375596; 8.4047877496038; 12.13446778129952; 3.0522063391442154; 75.39587367670366; 19.48737377179082; 26.06240594294769; 35.258122266244094; 47.393535863708365; 102.4418847068145; 141.96338072900173; 216.73006992076054; 57.119490206022185; 74.0180640253566];
+capacity_decay = [0.009924242493564902; 0.011766654897325313; 0.021918890766883997; 0.008382890722068593; 0.007037282923931671; 0.003464182863234111; 0.0037404093753168966; 0.00623178662945767; 0.00845015261445678; 0.002361991490221066; 0.013369497785277712; 0.0034660806595764593; 0.003318786745043556; 0.00972773382829525; 0.002685599406741549; 0.0022271995818521828; 0.008177596851418945; 0.0002493042920035382; 0.0019892690797785884; 0.002778728085433424; 0.00031784417563160416; 0.0036400341681598336; 0.003742659879545426; 0.001483582429995874; 0.005109474954020199];
+
+responses = [overpotential, kinetics, particle, capacity_decay];
+
+% 1.5 参数设置
+n_trials = 25; n_factors = 6; n_levels = 5; alpha = 0.05;
+
+% ==================== 2. 详细方差分析 (ANOVA) ====================
+fprintf('========== 详细方差分析 ==========\n\n');
+ANOVA_results = struct();
+
+for response_idx = 1:length(response_names)
+    fprintf('>>> 响应指标: %s <<<\n', response_names{response_idx});
+    Y = responses(:, response_idx);
+    Y_mean = mean(Y);
+    SST = sum((Y - Y_mean).^2);
+    df_total = n_trials - 1;
+    
+    SS = zeros(1, n_factors);
+    df_factor = n_levels - 1;
+    for f = 1:n_factors
+        for level = 1:n_levels
+            idx = orthogonal_matrix(:, f) == level;
+            SS(f) = SS(f) + sum(idx) * (mean(Y(idx)) - Y_mean)^2;
+        end
+    end
+    
+    error_factor = 6; % 因子6为误差
+    SS_error = SS(error_factor);
+    df_error = df_factor;
+    MS_error = SS_error / df_error;
+    
+    factors_to_test = setdiff(1:n_factors, error_factor);
+    fprintf('%-8s\t%-12s\t%-8s\t%-8s\t%-10s\n', '来源', 'SS', 'df', 'F值', 'p值');
+    fprintf('----------------------------------------------------------------\n');
+    
+    for i = 1:length(factors_to_test)
+        f = factors_to_test(i);
+        MS_f = SS(f) / df_factor;
+        F_val = MS_f / MS_error;
+        p_val = 1 - fcdf(F_val, df_factor, df_error);
+        fprintf('%-8s\t%.4e\t%d\t%.2f\t\t%.6f\n', factor_names{f}, SS(f), df_factor, F_val, p_val);
+    end
+    fprintf('%-8s\t%.4e\t%d\n', '误差', SS_error, df_error);
+    fprintf('%-8s\t%.4e\t%d\n', '总和', SST, df_total);
+    ANOVA_results(response_idx).SS = SS;
+    fprintf('\n');
+end
+
+% ==================== 3. 详细交互作用分析 ====================
+fprintf('========== 详细交互作用分析 ==========\n\n');
+fprintf('注意：L25正交表可以估计部分二阶交互作用，但需谨慎解释结果\n');
+fprintf('交互效应通过回归模型检测，显著性水平α=%.3f\n\n', alpha);
+
+% 生成所有可能的二阶交互组合
+interaction_pairs = nchoosek(1:5, 2);
+n_pairs = size(interaction_pairs, 1);
+
+for response_idx = 1:length(response_names)
+    fprintf('>>> 响应指标: %s 的交互作用分析 <<<\n', response_names{response_idx});
+    Y = responses(:, response_idx);
+    
+    % 构建包含所有主效应和交互效应的设计矩阵
+    X_main = orthogonal_matrix(:, 1:5);
+    
+    % 创建交互项（乘积项）
+    X_interactions = zeros(n_trials, n_pairs);
+    interaction_names = cell(1, n_pairs);
+    
+    for i = 1:n_pairs
+        f1 = interaction_pairs(i, 1);
+        f2 = interaction_pairs(i, 2);
+        X_interactions(:, i) = X_main(:, f1) .* X_main(:, f2);
+        interaction_names{i} = sprintf('%s×%s', factor_names{f1}, factor_names{f2});
+    end
+    
+    % 构建完整设计矩阵（主效应+交互效应）
+    X_full = [X_main, X_interactions];
+    
+    % 执行回归分析
+    [b, bint, r, rint, stats] = regress(Y, [ones(n_trials,1), zscore(X_full)]);
+    
+    % 计算每个系数的t检验
+    n_params = size(X_full, 2);
+    df_residual = n_trials - n_params - 1;
+    MSE = stats(4); % 均方误差
+    
+    % 计算标准误和t值
+    X_design = [ones(n_trials,1), zscore(X_full)];
+    cov_b = MSE * inv(X_design' * X_design);
+    se_b = sqrt(diag(cov_b));
+    t_values = b ./ se_b;
+    p_values = 2 * (1 - tcdf(abs(t_values), df_residual));
+    
+    % 筛选显著的交互项
+    significant_interactions = [];
+    fprintf('显著的交互作用项 (p<%.3f):\n', alpha);
+    fprintf('%-15s\t%-10s\t%-10s\t%-10s\n', '交互项', '系数', 't值', 'p值');
+    fprintf('----------------------------------------------------------\n');
+    
+    for i = 1:n_pairs
+        param_idx = 5 + i + 1; % +1是因为有截距项
+        if p_values(param_idx) < alpha
+            fprintf('%-15s\t%10.4f\t%10.4f\t%10.6f\n', ...
+                interaction_names{i}, b(param_idx), t_values(param_idx), p_values(param_idx));
+            significant_interactions = [significant_interactions; interaction_pairs(i,:)];
+        end
+    end
+    
+    if isempty(significant_interactions)
+        fprintf('未发现显著的二阶交互作用。\n');
+    else
+        fprintf('\n共发现 %d 个显著交互作用。\n', size(significant_interactions, 1));
+        
+        % 分析显著交互作用的具体模式
+        fprintf('\n显著交互作用的具体模式分析:\n');
+        for i = 1:size(significant_interactions, 1)
+            f1 = significant_interactions(i, 1);
+            f2 = significant_interactions(i, 2);
+            
+            fprintf('\n交互作用 %s×%s:\n', factor_names{f1}, factor_names{f2});
+            
+            % 创建交互作用表
+            interaction_table = zeros(n_levels, n_levels);
+            for l1 = 1:n_levels
+                for l2 = 1:n_levels
+                    idx = (X_main(:, f1) == l1) & (X_main(:, f2) == l2);
+                    if any(idx)
+                        interaction_table(l1, l2) = mean(Y(idx));
+                    end
+                end
+            end
+            
+            fprintf('交互作用表 (行:%s, 列:%s):\n', factor_names{f1}, factor_names{f2});
+            fprintf('       L1       L2       L3       L4       L5\n');
+            for l1 = 1:n_levels
+                fprintf('L%d  ', l1);
+                for l2 = 1:n_levels
+                    fprintf('%8.4f ', interaction_table(l1, l2));
+                end
+                fprintf('\n');
+            end
+            
+            % 计算简单效应
+            fprintf('\n简单效应分析:\n');
+            % 当因子2固定在某一水平时，因子1的效应
+            fprintf('当%s固定时，%s的效应变化:\n', factor_names{f2}, factor_names{f1});
+            for l2 = 1:n_levels
+                effects = zeros(1, n_levels);
+                for l1 = 1:n_levels
+                    idx = (X_main(:, f2) == l2) & (X_main(:, f1) == l1);
+                    if any(idx)
+                        effects(l1) = mean(Y(idx));
+                    end
+                end
+                if ~all(effects == 0)
+                    fprintf('  %s=L%d: ', factor_names{f2}, l2);
+                    fprintf('[%s]', sprintf('%.4f ', effects));
+                    fprintf(' (极差: %.4f)\n', max(effects(effects~=0)) - min(effects(effects~=0)));
+                end
+            end
+        end
+    end
+    
+    fprintf('\n%s模型的整体拟合情况:\n', response_names{response_idx});
+    fprintf('  R² = %.4f, 调整R² = %.4f, F = %.2f, p = %.6f\n\n', ...
+        stats(1), 1 - (1-stats(1))*(n_trials-1)/(df_residual), stats(2), stats(3));
+end
+
+% ==================== 4. 回归建模 (主效应模型，用于预测) ====================
+fprintf('========== 主效应回归模型构建 ==========\n\n');
+regression_models = struct();
+X_raw = orthogonal_matrix(:, 1:5);
+X_mean = mean(X_raw); 
+X_std = std(X_raw);
+X_stdized = (X_raw - X_mean) ./ X_std; % 全局标准化矩阵
+
+for r = 1:length(response_names)
+    Y = responses(:, r);
+    [b, ~, resid, ~, stats] = regress(Y, [ones(n_trials,1), X_stdized]);
+    regression_models(r).b = b;
+    regression_models(r).R2 = stats(1);
+    regression_models(r).adjR2 = 1 - (1-stats(1))*(n_trials-1)/(n_trials-size(X_stdized,2)-1);
+    regression_models(r).F = stats(2);
+    regression_models(r).p = stats(3);
+    
+    fprintf('  %s 主效应模型:\n', response_names{r});
+    fprintf('    截距: %.4e\n', b(1));
+    for f = 1:5
+        fprintf('    %s系数: %.4e\n', factor_names{f}, b(f+1));
+    end
+    fprintf('    R²=%.4f, 调整R²=%.4f, F=%.2f, p=%.6f\n\n', ...
+        stats(1), regression_models(r).adjR2, stats(2), stats(3));
+end
+
+% ==================== 5. 趋势分析 (各水平极差) ====================
+fprintf('========== 趋势与极差分析 ==========\n\n');
+for r = 1:length(response_names)
+    fprintf('>>> %s (均值趋势) <<<\n', response_names{r});
+    Y = responses(:, r);
+    fprintf('  %-8s', '因子');
+    for l=1:5, fprintf('\tL%d', l); end
+    fprintf('\t极差(R)\t\t排序\n');
+    
+    ranges = zeros(1,5);
+    for f=1:5
+        means = zeros(1,5);
+        for l=1:5, means(l) = mean(Y(orthogonal_matrix(:,f)==l)); end
+        ranges(f) = max(means)-min(means);
+    end
+    
+    [~, rank_order] = sort(ranges, 'descend');
+    
+    for f_idx = 1:5
+        f = rank_order(f_idx);
+        means = zeros(1,5);
+        for l=1:5, means(l) = mean(Y(orthogonal_matrix(:,f)==l)); end
+        fprintf('  %-8s', factor_names{f});
+        for l=1:5, fprintf('\t%.2e', means(l)); end
+        fprintf('\t%.2e\t%d\n', ranges(f), f_idx);
+    end
+    fprintf('\n');
+end
+
+% ==================== 6. 单项指标最优解 (Minimization) ====================
+fprintf('========== 单项指标最优解 (越小越好) ==========\n');
+fprintf('针对每个指标，寻找使其值最小的因子水平组合。\n\n');
+
+optimal_solutions = struct();
+
+for r = 1:length(response_names)
+    Y = responses(:, r);
+    fprintf('>>> %s 最优化求解 (Min) <<<\n', response_names{r});
+    fprintf('  当前试验范围: [%.4e, %.4e]\n', min(Y), max(Y));
+    
+    % 寻找各因子最优水平（均值最小的水平）
+    best_levels = zeros(1, 5);
+    fprintf('  各因子最优水平分析:\n');
+    for f = 1:5
+        level_means = zeros(1, n_levels);
+        for l = 1:n_levels
+            idx = orthogonal_matrix(:, f) == l;
+            level_means(l) = mean(Y(idx));
+        end
+        [min_val, best_l] = min(level_means);
+        best_levels(f) = best_l;
+        fprintf('    %s: 最优水平为L%d (均值: %.4e)\n', factor_names{f}, best_l, min_val);
+    end
+    
+    % 使用回归模型预测最优值
+    b = regression_models(r).b;
+    % 标准化预测向量
+    X_pred_norm = (best_levels - X_mean) ./ X_std; 
+    pred_val = b(1) + sum(b(2:end)' .* X_pred_norm);
+    
+    fprintf('  -----------------------------\n');
+    fprintf('  理论最优组合: [因子1:L%d, 因子2:L%d, 因子3:L%d, 因子4:L%d, 因子5:L%d]\n', best_levels);
+    fprintf('  回归预测值: %.4e\n', pred_val);
+    
+    if pred_val < min(Y)
+        improve = (min(Y) - pred_val)/min(Y) * 100;
+        fprintf('  预期改善: 比试验最小值降低 %.2f%%\n', improve);
+    else
+        fprintf('  预测值接近试验最优值，建议进行验证试验。\n');
+    end
+    fprintf('\n');
+end
+
+% ==================== 7. 综合优化建议 (多目标加权) ====================
+fprintf('========== 综合优化建议 (多目标同时最小化) ==========\n\n');
+
+% 权重设置：可根据需要调整
+weights = [0.25, 0.25, 0.25, 0.25]; % 均衡权重
+% weights = [0.3, 0.3, 0.2, 0.2]; % 侧重过电位和动力学
+
+fprintf('权重分配: 过电位(%.2f), 动力学(%.2f), 颗粒(%.2f), 衰减(%.2f)\n', weights);
+fprintf('目标: 最小化综合评分 (Lower Score is Better)\n\n');
+
+composite_scores = zeros(5, n_levels);
+
+% 计算综合评分
+for f = 1:5
+    for l = 1:n_levels
+        score = 0;
+        for r = 1:4
+            Y_curr = responses(:, r);
+            idx = orthogonal_matrix(:, f) == l;
+            val_mean = mean(Y_curr(idx));
+            
+            % 归一化 (越小越好 -> 0为最优, 1为最差)
+            min_y = min(Y_curr);
+            max_y = max(Y_curr);
+            norm_val = (val_mean - min_y) / (max_y - min_y);
+            
+            score = score + weights(r) * norm_val;
+        end
+        composite_scores(f, l) = score;
+    end
+end
+
+% 输出综合最优
+overall_best_levels = zeros(1, 5);
+fprintf('%-8s\t%-10s\t%-10s\n', '因子', '最佳水平', '综合评分(越低越好)');
+fprintf('----------------------------------------\n');
+
+for f = 1:5
+    [min_score, best_l] = min(composite_scores(f, :));
+    overall_best_levels(f) = best_l;
+    fprintf('%-8s\tLevel %d  \t%.4f\n', factor_names{f}, best_l, min_score);
+end
+
+% 计算综合最优组合的预测值
+fprintf('\n>>> 最终推荐综合参数组合 <<<\n');
+fprintf('  [ 因子1: L%d, 因子2: L%d, 因子3: L%d, 因子4: L%d, 因子5: L%d ]\n', overall_best_levels);
+
+% 预测综合最优组合的各指标值
+fprintf('\n该组合下各指标的预测值:\n');
+for r = 1:4
+    b = regression_models(r).b;
+    X_pred_norm = (overall_best_levels - X_mean) ./ X_std; 
+    pred_val = b(1) + sum(b(2:end)' .* X_pred_norm);
+    fprintf('  %s: %.4e', response_names{r}, pred_val);
+    
+    % 与当前最优值比较
+    if r == 4 % 容量衰减越小越好
+        if pred_val < min(responses(:, r))
+            improve = (min(responses(:, r)) - pred_val)/min(responses(:, r)) * 100;
+            fprintf(' (预计改善: +%.1f%%)', improve);
+        end
+    end
+    fprintf('\n');
+end
+
+fprintf('\n分析完成。\n\n');
+
+% ==================== 8. 分析总结与建议 ====================
+fprintf('========== 分析总结与试验建议 ==========\n\n');
+fprintf('1. 主要发现:\n');
+fprintf('   - 各指标的最佳因子水平组合可能不同，存在权衡关系\n');
+fprintf('   - 交互作用分析揭示了因子间的复杂关系\n');
+fprintf('   - 综合优化提供了平衡各指标的折中方案\n\n');
+
+fprintf('2. 下一步建议:\n');
+fprintf('   a) 对推荐的优化组合进行验证试验\n');
+fprintf('   b) 如有必要，可在最优区域进行进一步细化试验\n');
+fprintf('   c) 考虑实际工艺约束调整优化方案\n\n');
+
+fprintf('3. 注意事项:\n');
+fprintf('   - 回归模型的预测能力有限，实际结果可能有所不同\n');
+fprintf('   - 交互作用结果需谨慎解释，建议通过专门试验验证\n');
+fprintf('   - 实际应用中需考虑成本、可操作性等因素\n');
+% ==================== 9. 响应面分析 (RSM) ====================
+fprintf('========== 响应面分析 (Response Surface Methodology) ==========\n\n');
+
+% 9.1 构建二次响应面模型（包括平方项和交互项）
+fprintf('>>> 二次响应面模型构建 <<<\n');
+fprintf('模型形式: Y = β0 + ΣβiXi + ΣβiiXi² + ΣβijXiXj + ε\n\n');
+
+% 对因子水平进行中心化和标准化处理（-1到1范围）
+X_centered = (orthogonal_matrix(:, 1:5) - 3) / 2;  % 将1-5水平转换为-1到1
+
+% 为每个响应变量构建二次响应面模型
+response_surface_models = struct();
+
+for r = 1:length(response_names)
+    fprintf('【%s】的二次响应面模型:\n', response_names{r});
+    Y = responses(:, r);
+    
+    % 构建完整二次模型的设计矩阵
+    % 包括：常数项、线性项、平方项、所有交互项
+    n_factors_rsm = 5;
+    
+    % 1. 常数项
+    X_design = ones(n_trials, 1);
+    
+    % 2. 线性项
+    X_design = [X_design, X_centered];
+    
+    % 3. 平方项
+    X_squared = X_centered .^ 2;
+    X_design = [X_design, X_squared];
+    
+    % 4. 交互项 (所有二阶交互)
+    interaction_terms = zeros(n_trials, nchoosek(n_factors_rsm, 2));
+    interaction_names = cell(1, nchoosek(n_factors_rsm, 2));
+    term_count = 0;
+    
+    for i = 1:n_factors_rsm
+        for j = i+1:n_factors_rsm
+            term_count = term_count + 1;
+            interaction_terms(:, term_count) = X_centered(:, i) .* X_centered(:, j);
+            interaction_names{term_count} = sprintf('X%d×X%d', i, j);
+        end
+    end
+    
+    X_design = [X_design, interaction_terms];
+    
+    % 5. 进行回归分析
+    [b_rsm, bint_rsm, r_rsm, rint_rsm, stats_rsm] = regress(Y, X_design);
+    
+    % 计算系数的统计量
+    n_params = size(X_design, 2);
+    df_residual = n_trials - n_params;
+    MSE_rsm = stats_rsm(4);
+    
+    % 计算标准误、t值和p值
+    cov_b_rsm = MSE_rsm * inv(X_design' * X_design);
+    se_b_rsm = sqrt(diag(cov_b_rsm));
+    t_values_rsm = b_rsm ./ se_b_rsm;
+    p_values_rsm = 2 * (1 - tcdf(abs(t_values_rsm), df_residual));
+    
+    % 保存模型信息
+    response_surface_models(r).coefficients = b_rsm;
+    response_surface_models(r).p_values = p_values_rsm;
+    response_surface_models(r).R2 = stats_rsm(1);
+    response_surface_models(r).adjR2 = 1 - (1-stats_rsm(1))*(n_trials-1)/df_residual;
+    response_surface_models(r).F = stats_rsm(2);
+    response_surface_models(r).p_model = stats_rsm(3);
+    response_surface_models(r).MSE = MSE_rsm;
+    
+    % 输出显著项 (p < 0.1)
+    fprintf('显著项 (p < 0.1):\n');
+    fprintf('%-15s\t%-12s\t%-10s\t%-10s\n', '项', '系数', 't值', 'p值');
+    fprintf('--------------------------------------------------------------\n');
+    
+    % 常数项
+    if p_values_rsm(1) < 0.1
+        fprintf('%-15s\t%12.4e\t%10.4f\t%10.6f\n', '截距', b_rsm(1), t_values_rsm(1), p_values_rsm(1));
+    end
+    
+    % 线性项
+    for i = 1:n_factors_rsm
+        idx = i + 1;
+        if p_values_rsm(idx) < 0.1
+            fprintf('%-15s\t%12.4e\t%10.4f\t%10.6f\n', sprintf('X%d', i), b_rsm(idx), t_values_rsm(idx), p_values_rsm(idx));
+        end
+    end
+    
+    % 平方项
+    for i = 1:n_factors_rsm
+        idx = n_factors_rsm + 1 + i;
+        if p_values_rsm(idx) < 0.1
+            fprintf('%-15s\t%12.4e\t%10.4f\t%10.6f\n', sprintf('X%d²', i), b_rsm(idx), t_values_rsm(idx), p_values_rsm(idx));
+        end
+    end
+    
+    % 交互项
+    for i = 1:length(interaction_names)
+        idx = 2*n_factors_rsm + 1 + i;
+        if p_values_rsm(idx) < 0.1
+            fprintf('%-15s\t%12.4e\t%10.4f\t%10.6f\n', interaction_names{i}, b_rsm(idx), t_values_rsm(idx), p_values_rsm(idx));
+        end
+    end
+    
+ 
+    % 检查模型是否过拟合
+    if response_surface_models(r).adjR2 < 0.7
+        fprintf('警告: 调整R²较低，模型可能过拟合或解释能力有限\n');
+    end
+    
+    fprintf('\n');
+end
+
+% 9.2 响应面优化分析
+fprintf('>>> 响应面优化分析 <<<\n\n');
+
+% 使用梯度下降法寻找各响应的最优解
+fprintf('使用梯度下降法寻找各响应面的最优解:\n');
+for r = 1:length(response_names)
+    fprintf('\n【%s】的响应面优化:\n', response_names{r});
+    
+    % 提取模型系数
+    b = response_surface_models(r).coefficients;
+    
+    % 定义目标函数（基于二次模型）
+    objective_func = @(x) quadratic_response(x, b, n_factors_rsm);
+    
+    % 多起点梯度下降
+    best_x = zeros(1, n_factors_rsm);
+    best_fval = inf;
+    
+    % 尝试多个起点
+    for start = 1:5
+        % 随机起点（在[-1,1]范围内）
+        x0 = -1 + 2*rand(1, n_factors_rsm);
+        
+        % 使用fmincon寻找最小值
+        options = optimset('Display', 'off', 'MaxIter', 1000);
+        [x_opt, fval] = fmincon(objective_func, x0, [], [], [], [], ...
+                               -ones(1,n_factors_rsm), ones(1,n_factors_rsm), [], options);
+        
+        % 记录最佳结果
+        if fval < best_fval
+            best_fval = fval;
+            best_x = x_opt;
+        end
+    end
+    
+    % 将编码值转换回原始水平
+    original_levels = best_x * 2 + 3;
+    
+    % 四舍五入到最近的整数水平（1-5）
+    rounded_levels = round(original_levels);
+    rounded_levels = max(1, min(5, rounded_levels));  % 确保在1-5范围内
+    
+    fprintf('  编码空间最优解: [');
+    fprintf('%.3f ', best_x);
+    fprintf(']\n');
+    
+    fprintf('  原始水平最优解: [');
+    fprintf('%.2f ', original_levels);
+    fprintf(']\n');
+    
+    fprintf('  最近整数水平: [');
+    fprintf('L%d ', rounded_levels);
+    fprintf(']\n');
+    
+    % 使用回归模型预测该组合的值
+    X_pred_norm = (rounded_levels - X_mean) ./ X_std;
+    pred_val = regression_models(r).b(1) + sum(regression_models(r).b(2:end)' .* X_pred_norm);
+    fprintf('  预测值: %.4e\n', pred_val);
+    
+    % 与当前最优值比较
+    current_opt = min(responses(:, r));
+    if pred_val < current_opt
+        improvement = (current_opt - pred_val) / current_opt * 100;
+        fprintf('  预计改善: %.2f%% (比当前最优值)\n', improvement);
+    end
+end
+
+% 9.3 等高线分析（通过数学计算）
+fprintf('\n>>> 响应面等高线分析 <<<\n');
+fprintf('分析各响应面的平坦区域和最优区域:\n\n');
+
+for r = 1:length(response_names)
+    fprintf('【%s】的响应面特征:\n', response_names{r});
+    
+    % 提取二次模型系数
+    b = response_surface_models(r).coefficients;
+    
+    % 计算梯度向量（一阶导数）
+    gradient_coeffs = b(2:6);  % 线性项系数
+    
+    % 计算海森矩阵（二阶导数）
+    hessian = zeros(n_factors_rsm, n_factors_rsm);
+    
+    % 对角线元素（来自平方项）
+    for i = 1:n_factors_rsm
+        hessian(i, i) = 2 * b(6 + i);  % X²项的系数
+    end
+    
+    % 非对角线元素（来自交互项）
+    % 交互项的排列顺序：X1X2, X1X3, X1X4, X1X5, X2X3, X2X4, X2X5, X3X4, X3X5, X4X5
+    interaction_idx = 11;  % 从第11项开始是交互项
+    
+    for i = 1:n_factors_rsm
+        for j = i+1:n_factors_rsm
+            hessian(i, j) = b(interaction_idx);
+            hessian(j, i) = b(interaction_idx);
+            interaction_idx = interaction_idx + 1;
+        end
+    end
+    
+    % 判断响应面类型
+    eigenvalues = eig(hessian);
+    positive_eigs = sum(eigenvalues > 0);
+    negative_eigs = sum(eigenvalues < 0);
+    
+    if all(eigenvalues > 0)
+        fprintf('  响应面类型: 凸面（有唯一最小值）\n');
+    elseif all(eigenvalues < 0)
+        fprintf('  响应面类型: 凹面（有唯一最大值）\n');
+    elseif positive_eigs > 0 && negative_eigs > 0
+        fprintf('  响应面类型: 鞍面（有鞍点）\n');
+    else
+        fprintf('  响应面类型: 平面或退化\n');
+    end
+    
+    % 计算平稳点（梯度=0的点）
+    if det(hessian) ~= 0
+        stationary_point = -inv(hessian) * gradient_coeffs;
+        
+        % 检查平稳点是否在[-1,1]范围内
+        in_range = all(abs(stationary_point) <= 1.2);  % 稍微放宽范围
+        
+        if in_range
+            fprintf('  平稳点位置（编码值）: [');
+            fprintf('%.3f ', stationary_point);
+            fprintf(']\n');
+            
+            % 转换回原始水平
+            original_stationary = stationary_point' * 2 + 3;
+            fprintf('  平稳点位置（原始值）: [');
+            fprintf('%.2f ', original_stationary);
+            fprintf(']\n');
+            
+            % 判断平稳点性质
+            if all(eigenvalues > 0)
+                fprintf('  平稳点性质: 最小值点\n');
+            elseif all(eigenvalues < 0)
+                fprintf('  平稳点性质: 最大值点\n');
+            else
+                fprintf('  平稳点性质: 鞍点\n');
+            end
+        else
+            fprintf('  平稳点不在试验范围内\n');
+        end
+    else
+        fprintf('  海森矩阵奇异，无法计算平稳点\n');
+    end
+    
+    % 计算响应面在最优点的曲率
+    if all(eigenvalues > 0)
+        curvature = min(eigenvalues);
+        fprintf('  最小曲率: %.4f\n', curvature);
+        
+        if curvature < 0.1
+            fprintf('  响应面在最优区域相对平坦\n');
+        else
+            fprintf('  响应面在最优区域相对陡峭\n');
+        end
+    end
+    
+    fprintf('\n');
+end
+
+% 9.4 多响应面同时优化（满意度函数法）
+fprintf('>>> 多响应面同时优化 <<<\n\n');
+
+% 定义各响应的目标（越小越好）
+goals = zeros(1, length(response_names));  % 0表示最小化
+weights_multi = [0.25, 0.25, 0.25, 0.25];  % 权重
+
+% 计算各响应的满意度函数
+fprintf('使用满意度函数法进行多目标优化:\n');
+
+% 定义搜索网格
+n_grid = 5;
+grid_points = linspace(-1, 1, n_grid);
+
+% 初始化最佳组合
+best_overall_score = -inf;
+best_combination = zeros(1, n_factors_rsm);
+
+% 网格搜索（由于维度不高，可用）
+fprintf('进行网格搜索...\n');
+
+% 创建所有网格点组合
+grid_combs = combvec(grid_points, grid_points, grid_points, grid_points, grid_points)';
+
+% 限制搜索数量以避免计算量过大
+max_combinations = min(2000, size(grid_combs, 1));
+if size(grid_combs, 1) > max_combinations
+    indices = randperm(size(grid_combs, 1), max_combinations);
+    grid_combs = grid_combs(indices, :);
+end
+
+for i = 1:size(grid_combs, 1)
+    x = grid_combs(i, :);
+    
+    % 计算各响应的预测值
+    satisfaction_scores = zeros(1, length(response_names));
+    
+    for r = 1:length(response_names)
+        % 使用二次模型预测
+        pred_val = quadratic_response(x, response_surface_models(r).coefficients, n_factors_rsm);
+        
+        % 计算满意度（归一化，越小越好）
+        min_val = min(responses(:, r));
+        max_val = max(responses(:, r));
+        
+        if max_val - min_val > 0
+            satisfaction = 1 - (pred_val - min_val) / (max_val - min_val);
+        else
+            satisfaction = 1;
+        end
+        
+        satisfaction = max(0, min(1, satisfaction));  % 限制在0-1之间
+        satisfaction_scores(r) = satisfaction;
+    end
+    
+    % 计算加权满意度
+    overall_satisfaction = sum(weights_multi .* satisfaction_scores);
+    
+    if overall_satisfaction > best_overall_score
+        best_overall_score = overall_satisfaction;
+        best_combination = x;
+    end
+end
+
+% 输出最优结果
+fprintf('\n最优组合（编码值）: [');
+fprintf('%.3f ', best_combination);
+fprintf(']\n');
+
+% 转换回原始水平
+best_original = best_combination * 2 + 3;
+fprintf('最优组合（原始值）: [');
+fprintf('%.2f ', best_original);
+fprintf(']\n');
+
+% 取整到最近水平
+best_levels_rounded = round(best_original);
+best_levels_rounded = max(1, min(5, best_levels_rounded));
+fprintf('最优组合（整数水平）: [');
+fprintf('L%d ', best_levels_rounded);
+fprintf(']\n');
+
+fprintf('总体满意度: %.4f\n', best_overall_score);
+
+% 预测各响应值
+fprintf('\n该组合下各指标预测值:\n');
+for r = 1:length(response_names)
+    % 使用主效应模型预测（更稳健）
+    X_pred_norm = (best_levels_rounded - X_mean) ./ X_std;
+    pred_val = regression_models(r).b(1) + sum(regression_models(r).b(2:end)' .* X_pred_norm);
+    
+    % 计算改善百分比
+    current_min = min(responses(:, r));
+    improvement = 0;
+    if pred_val < current_min
+        improvement = (current_min - pred_val) / current_min * 100;
+    end
+    
+    fprintf('  %-20s: %.4e', response_names{r}, pred_val);
+    if improvement > 0
+        fprintf(' (改善: +%.1f%%)', improvement);
+    end
+    fprintf('\n');
+end
+
+fprintf('\n');
+
+% 辅助函数：二次响应面计算
+function y = quadratic_response(x, b, n_factors)
+    % 计算二次响应面的预测值
+    % x: 编码值向量（-1到1）
+    % b: 系数向量 [截距; 线性项; 平方项; 交互项]
+    
+    y = b(1);  % 截距
+    
+    % 线性项
+    y = y + sum(b(2:n_factors+1) .* x');
+    
+    % 平方项
+    y = y + sum(b(n_factors+2:2*n_factors+1) .* (x.^2)');
+    
+    % 交互项
+    idx = 2*n_factors + 2;
+    for i = 1:n_factors
+        for j = i+1:n_factors
+            y = y + b(idx) * x(i) * x(j);
+            idx = idx + 1;
+        end
+    end
+end
+
+% ==================== 10. 鲁棒性分析 ====================
+fprintf('========== 鲁棒性分析 ==========\n\n');
+
+fprintf('分析各最优组合对参数波动的敏感性:\n\n');
+
+% 分析综合最优组合的鲁棒性
+fprintf('>>> 综合最优组合的鲁棒性分析 <<<\n');
+fprintf('最优组合: [因子1:L%d, 因子2:L%d, 因子3:L%d, 因子4:L%d, 因子5:L%d]\n\n', overall_best_levels);
+
+% 为每个因素创建扰动
+perturbation = 0.5;  % 相当于水平变化0.5个单位
+
+for f = 1:5
+    fprintf('分析 %s 的波动影响 (±%.1f水平单位):\n', factor_names{f}, perturbation);
+    
+    % 创建扰动组合
+    perturbed_levels_plus = overall_best_levels;
+    perturbed_levels_minus = overall_best_levels;
+    
+    perturbed_levels_plus(f) = min(5, overall_best_levels(f) + perturbation);
+    perturbed_levels_minus(f) = max(1, overall_best_levels(f) - perturbation);
+    
+    % 计算各响应的变化
+    for r = 1:length(response_names)
+        % 原始预测
+        X_orig_norm = (overall_best_levels - X_mean) ./ X_std;
+        pred_orig = regression_models(r).b(1) + sum(regression_models(r).b(2:end)' .* X_orig_norm);
+        
+        % 正扰动预测
+        X_plus_norm = (perturbed_levels_plus - X_mean) ./ X_std;
+        pred_plus = regression_models(r).b(1) + sum(regression_models(r).b(2:end)' .* X_plus_norm);
+        
+        % 负扰动预测
+        X_minus_norm = (perturbed_levels_minus - X_mean) ./ X_std;
+        pred_minus = regression_models(r).b(1) + sum(regression_models(r).b(2:end)' .* X_minus_norm);
+        
+        % 计算变化百分比
+        change_plus = abs(pred_plus - pred_orig) / pred_orig * 100;
+        change_minus = abs(pred_minus - pred_orig) / pred_orig * 100;
+        
+        avg_change = (change_plus + change_minus) / 2;
+        
+        fprintf('  %s: 平均变化 %.2f%% (L+%.1f: %.2f%%, L-%.1f: %.2f%%)\n', ...
+            response_names{r}, avg_change, perturbation, change_plus, perturbation, change_minus);
+    end
+    fprintf('\n');
+end
+
+% 识别最敏感的因素
+fprintf('>>> 最敏感因素识别 <<<\n');
+sensitivity_scores = zeros(1, 5);
+
+for f = 1:5
+    total_change = 0;
+    
+    for r = 1:length(response_names)
+        % 创建扰动
+        perturbed_levels = overall_best_levels;
+        perturbed_levels(f) = min(5, overall_best_levels(f) + 0.5);
+        
+        % 计算预测值
+        X_orig_norm = (overall_best_levels - X_mean) ./ X_std;
+        X_pert_norm = (perturbed_levels - X_mean) ./ X_std;
+        
+        pred_orig = regression_models(r).b(1) + sum(regression_models(r).b(2:end)' .* X_orig_norm);
+        pred_pert = regression_models(r).b(1) + sum(regression_models(r).b(2:end)' .* X_pert_norm);
+        
+        % 归一化变化
+        min_val = min(responses(:, r));
+        max_val = max(responses(:, r));
+        
+        if max_val - min_val > 0
+            norm_change = abs(pred_pert - pred_orig) / (max_val - min_val);
+        else
+            norm_change = 0;
+        end
+        
+        total_change = total_change + weights(r) * norm_change;
+    end
+    
+    sensitivity_scores(f) = total_change;
+end
+
+% 排序
+[~, sensitivity_rank] = sort(sensitivity_scores, 'descend');
+for i = 1:5
+    f = sensitivity_rank(i);
+    fprintf('  %d. %s: 敏感度得分 %.4f\n', i, factor_names{f}, sensitivity_scores(f));
+end
+
+fprintf('\n建议: 对高敏感因素（前2-3个）需要更严格的过程控制。\n');
+
+% ==================== 11. 最终推荐方案 ====================
+fprintf('\n========== 最终推荐方案 ==========\n\n');
+
+fprintf('基于以上分析，推荐以下试验方案:\n\n');
+
+fprintf('1. 首选方案（综合最优）:\n');
+fprintf('   组合: [因子1:L%d, 因子2:L%d, 因子3:L%d, 因子4:L%d, 因子5:L%d]\n', overall_best_levels);
+fprintf('   特点: 平衡各指标，鲁棒性较好\n\n');
+
+fprintf('2. 激进方案（追求最佳性能）:\n');
+fprintf('   针对过电位最优: [因子1:L%d, 因子2:L%d, 因子3:L%d, 因子4:L%d, 因子5:L%d]\n', ...
+    find_best_levels_for_response(responses(:,1), orthogonal_matrix, factor_names));
+fprintf('   针对动力学最优: [因子1:L%d, 因子2:L%d, 因子3:L%d, 因子4:L%d, 因子5:L%d]\n', ...
+    find_best_levels_for_response(responses(:,2), orthogonal_matrix, factor_names));
+fprintf('   特点: 特定指标最优，但可能牺牲其他指标\n\n');
+
+fprintf('3. 稳健方案（考虑工艺波动）:\n');
+% 选择敏感度低的因素组合
+robust_levels = overall_best_levels;
+% 对最敏感的因素，选择中间水平以增加鲁棒性
+for i = 1:min(2, length(sensitivity_rank))
+    f = sensitivity_rank(i);
+    robust_levels(f) = 3;  % 选择中间水平
+end
+fprintf('   组合: [因子1:L%d, 因子2:L%d, 因子3:L%d, 因子4:L%d, 因子5:L%d]\n', robust_levels);
+fprintf('   特点: 对工艺波动不敏感，适合量产\n\n');
+
+fprintf('4. 验证试验建议:\n');
+fprintf('   a) 实施首选方案进行验证\n');
+fprintf('   b) 如有余力，可测试激进方案以确认极限性能\n');
+fprintf('   c) 在最优区域附近设计2-3个补充试验点\n');
+fprintf('   d) 考虑进行重复试验以评估再现性\n\n');
+
+fprintf('5. 过程控制重点:\n');
+for i = 1:min(3, length(sensitivity_rank))
+    f = sensitivity_rank(i);
+    fprintf('   - 严格控制 %s (敏感度排名第%d)\n', factor_names{f}, i);
+end
+
+% 辅助函数：寻找各响应的最优水平组合
+function best_levels = find_best_levels_for_response(Y, orthogonal_matrix, factor_names)
+    n_factors = 5;
+    n_levels = 5;
+    best_levels = zeros(1, n_factors);
+    
+    for f = 1:n_factors
+        level_means = zeros(1, n_levels);
+        for l = 1:n_levels
+            idx = orthogonal_matrix(:, f) == l;
+            level_means(l) = mean(Y(idx));
+        end
+        [~, best_l] = min(level_means);  % 越小越好
+        best_levels(f) = best_l;
+    end
+end
+
+fprintf('\n========== 分析完成 ==========\n');
+% ==================== 12. 交互项响应面计算与绘图 ====================
+fprintf('========== 交互项响应面计算与绘图 ==========\n\n');
+
+% 设置绘图参数
+set(0, 'DefaultAxesFontSize', 12);
+set(0, 'DefaultTextFontSize', 12);
+set(0, 'DefaultLineLineWidth', 2);
+
+% 定义颜色方案
+colors = lines(7);  % 使用MATLAB的lines颜色方案
+
+% 对每个响应指标，找出最显著的交互项并绘制响应面
+for response_idx = 1:length(response_names)
+    fprintf('>>> 绘制 %s 的交互响应面图 <<<\n', response_names{response_idx});
+    Y = responses(:, response_idx);
+    
+    % 获取最显著的交互项（如果存在）
+    significant_interactions = [];
+    min_p_value = inf;
+    best_interaction = [];
+    
+    % 重新计算交互项显著性
+    n_factors_rsm = 5;
+    interaction_pairs = nchoosek(1:n_factors_rsm, 2);
+    n_pairs = size(interaction_pairs, 1);
+    
+    % 构建设计矩阵
+    X_main = orthogonal_matrix(:, 1:5);
+    X_interactions = zeros(n_trials, n_pairs);
+    
+    for i = 1:n_pairs
+        f1 = interaction_pairs(i, 1);
+        f2 = interaction_pairs(i, 2);
+        X_interactions(:, i) = X_main(:, f1) .* X_main(:, f2);
+    end
+    
+    % 完整设计矩阵
+    X_full = [X_main, X_interactions];
+    
+    % 回归分析
+    [b, ~, ~, ~, stats] = regress(Y, [ones(n_trials,1), zscore(X_full)]);
+    n_params = size(X_full, 2);
+    df_residual = n_trials - n_params - 1;
+    MSE = stats(4);
+    
+    % 计算标准误和p值
+    X_design = [ones(n_trials,1), zscore(X_full)];
+    cov_b = MSE * inv(X_design' * X_design);
+    se_b = sqrt(diag(cov_b));
+    t_values = b ./ se_b;
+    p_values = 2 * (1 - tcdf(abs(t_values), df_residual));
+    
+    % 找出最显著的交互项（p值最小）
+    for i = 1:n_pairs
+        param_idx = 5 + i + 1; % 交互项参数索引
+        if p_values(param_idx) < min_p_value && p_values(param_idx) < 0.1
+            min_p_value = p_values(param_idx);
+            best_interaction = interaction_pairs(i, :);
+        end
+    end
+    
+    if isempty(best_interaction)
+        fprintf('  未发现显著的交互作用 (p<0.1)，跳过绘图。\n\n');
+        continue;
+    end
+    
+    fprintf('  最显著交互项: %s×%s (p=%.4f)\n', ...
+        factor_names{best_interaction(1)}, factor_names{best_interaction(2)}, min_p_value);
+    
+    % ========== 准备绘图数据 ==========
+    f1 = best_interaction(1);
+    f2 = best_interaction(2);
+    
+    % 固定其他因素在最优水平（根据主效应）
+    other_factors = setdiff(1:5, [f1, f2]);
+    fixed_levels = zeros(1, 5);
+    
+    % 确定每个因子的最优水平（均值最小的水平）
+    for f = 1:5
+        level_means = zeros(1, n_levels);
+        for l = 1:n_levels
+            idx = orthogonal_matrix(:, f) == l;
+            level_means(l) = mean(Y(idx));
+        end
+        [~, best_l] = min(level_means);
+        fixed_levels(f) = best_l;
+    end
+    
+    % 创建网格数据
+    [X1_grid, X2_grid] = meshgrid(1:n_levels, 1:n_levels);
+    Z_grid = zeros(size(X1_grid));
+    
+    % 使用二次响应面模型计算响应值
+    for i = 1:numel(X1_grid)
+        % 创建完整的因子水平组合
+        test_levels = fixed_levels;
+        test_levels(f1) = X1_grid(i);
+        test_levels(f2) = X2_grid(i);
+        
+        % 将水平转换为标准化值（-1到1）
+        X_centered = (test_levels - 3) / 2;
+        
+        % 使用二次响应面模型计算预测值
+        if exist('response_surface_models', 'var') && length(response_surface_models) >= response_idx
+            b_rsm = response_surface_models(response_idx).coefficients;
+            Z_grid(i) = quadratic_response(X_centered, b_rsm, 5);
+        else
+            % 如果二次模型不存在，使用主效应模型
+            X_pred_norm = (test_levels - X_mean) ./ X_std;
+            Z_grid(i) = regression_models(response_idx).b(1) + ...
+                       sum(regression_models(response_idx).b(2:end)' .* X_pred_norm);
+        end
+    end
+    
+    % ========== 绘制3D曲面图 ==========
+    figure('Position', [100, 100, 800, 600]);
+    hold on;
+    
+    % 绘制曲面
+    surf(X1_grid, X2_grid, Z_grid, 'FaceAlpha', 0.8, 'EdgeColor', 'k', 'FaceColor', colors(1,:));
+    
+    % 添加原始试验点
+    for trial = 1:n_trials
+        x1_val = orthogonal_matrix(trial, f1);
+        x2_val = orthogonal_matrix(trial, f2);
+        z_val = Y(trial);
+        
+        % 检查该试验点是否具有相同的固定水平
+        match_other = true;
+        for f = other_factors
+            if orthogonal_matrix(trial, f) ~= fixed_levels(f)
+                match_other = false;
+                break;
+            end
+        end
+        
+        if match_other
+            % 相同固定水平：用红色星号标记
+            plot3(x1_val, x2_val, z_val, 'r*', 'MarkerSize', 10, 'LineWidth', 2);
+        else
+            % 不同固定水平：用蓝色圆圈标记
+            plot3(x1_val, x2_val, z_val, 'bo', 'MarkerSize', 8, 'LineWidth', 1);
+        end
+    end
+    
+    % 设置图形属性
+    grid on;
+    view(45, 30);  % 设置视角
+    
+    % 添加标题和标签（中文）
+    title(sprintf('%s - 交互响应面: %s × %s', ...
+        response_names{response_idx}, factor_names{f1}, factor_names{f2}), ...
+        'FontSize', 14, 'FontWeight', 'bold');
+    
+    xlabel(sprintf('%s 水平', factor_names{f1}), 'FontSize', 12);
+    ylabel(sprintf('%s 水平', factor_names{f2}), 'FontSize', 12);
+    zlabel(response_names{response_idx}, 'FontSize', 12);
+    
+    % 设置坐标轴范围
+    xlim([1, n_levels]);
+    ylim([1, n_levels]);
+    
+    % 添加图例
+    legend('响应面', '同固定水平试验点', '其他试验点', 'Location', 'best');
+    
+    % 添加颜色条
+    colorbar;
+    
+    % 添加说明文本
+    annotation('textbox', [0.15, 0.82, 0.3, 0.1], 'String', ...
+        sprintf('固定水平:\n%s', get_fixed_levels_text(other_factors, fixed_levels, factor_names)), ...
+        'BackgroundColor', 'white', 'EdgeColor', 'black', 'FontSize', 10);
+    
+    hold off;
+    
+    % ========== 绘制等高线图 ==========
+    figure('Position', [100, 100, 800, 600]);
+    
+    % 绘制等高线
+    [C, h] = contourf(X1_grid, X2_grid, Z_grid, 15);
+    clabel(C, h, 'FontSize', 10);
+    colorbar;
+    
+    % 添加原始试验点
+    hold on;
+    for trial = 1:n_trials
+        x1_val = orthogonal_matrix(trial, f1);
+        x2_val = orthogonal_matrix(trial, f2);
+        
+        % 检查该试验点是否具有相同的固定水平
+        match_other = true;
+        for f = other_factors
+            if orthogonal_matrix(trial, f) ~= fixed_levels(f)
+                match_other = false;
+                break;
+            end
+        end
+        
+        if match_other
+            plot(x1_val, x2_val, 'r*', 'MarkerSize', 12, 'LineWidth', 2);
+        else
+            plot(x1_val, x2_val, 'bo', 'MarkerSize', 8, 'LineWidth', 1);
+        end
+    end
+    
+    % 标记最优区域
+    [min_z, min_idx] = min(Z_grid(:));
+    [row, col] = ind2sub(size(Z_grid), min_idx);
+    plot(col, row, 'g^', 'MarkerSize', 15, 'LineWidth', 2, 'MarkerFaceColor', 'g');
+    
+    % 设置图形属性
+    grid on;
+    
+    % 添加标题和标签（中文）
+    title(sprintf('%s - 交互等高线: %s × %s', ...
+        response_names{response_idx}, factor_names{f1}, factor_names{f2}), ...
+        'FontSize', 14, 'FontWeight', 'bold');
+    
+    xlabel(sprintf('%s 水平', factor_names{f1}), 'FontSize', 12);
+    ylabel(sprintf('%s 水平', factor_names{f2}), 'FontSize', 12);
+    
+    % 设置坐标轴范围
+    xlim([1, n_levels]);
+    ylim([1, n_levels]);
+    
+    % 添加图例
+    legend('等高线', '同固定水平试验点', '其他试验点', '最优区域', 'Location', 'best');
+    
+    % 添加说明文本
+    annotation('textbox', [0.15, 0.82, 0.3, 0.1], 'String', ...
+        sprintf('固定水平:\n%s\n\n最优值: %.3e\n在 (%s=L%d, %s=L%d)', ...
+        get_fixed_levels_text(other_factors, fixed_levels, factor_names), ...
+        min_z, factor_names{f1}, col, factor_names{f2}, row), ...
+        'BackgroundColor', 'white', 'EdgeColor', 'black', 'FontSize', 10);
+    
+    hold off;
+    
+    fprintf('  已生成 %s 的交互响应面图。\n\n', response_names{response_idx});
+end
+
+% ========== 绘制交互作用效应图 ==========
+fprintf('>>> 绘制交互作用效应图 <<<\n');
+
+% 为每个显著的交互项绘制效应图
+for response_idx = 1:length(response_names)
+    Y = responses(:, response_idx);
+    
+    % 找出所有显著交互项
+    significant_interactions = [];
+    
+    % 重新计算交互项显著性
+    n_factors_rsm = 5;
+    interaction_pairs = nchoosek(1:n_factors_rsm, 2);
+    n_pairs = size(interaction_pairs, 1);
+    
+    % 构建设计矩阵
+    X_main = orthogonal_matrix(:, 1:5);
+    X_interactions = zeros(n_trials, n_pairs);
+    
+    for i = 1:n_pairs
+        f1 = interaction_pairs(i, 1);
+        f2 = interaction_pairs(i, 2);
+        X_interactions(:, i) = X_main(:, f1) .* X_main(:, f2);
+    end
+    
+    % 完整设计矩阵
+    X_full = [X_main, X_interactions];
+    
+    % 回归分析
+    [b, ~, ~, ~, stats] = regress(Y, [ones(n_trials,1), zscore(X_full)]);
+    n_params = size(X_full, 2);
+    df_residual = n_trials - n_params - 1;
+    MSE = stats(4);
+    
+    % 计算标准误和p值
+    X_design = [ones(n_trials,1), zscore(X_full)];
+    cov_b = MSE * inv(X_design' * X_design);
+    se_b = sqrt(diag(cov_b));
+    t_values = b ./ se_b;
+    p_values = 2 * (1 - tcdf(abs(t_values), df_residual));
+    
+    % 收集显著交互项
+    for i = 1:n_pairs
+        param_idx = 5 + i + 1; % 交互项参数索引
+        if p_values(param_idx) < 0.1
+            significant_interactions = [significant_interactions; interaction_pairs(i, :)];
+        end
+    end
+    
+    if isempty(significant_interactions)
+        continue;
+    end
+    
+    % 绘制交互效应图
+    figure('Position', [100, 100, 1000, 400]);
+    
+    for i = 1:min(3, size(significant_interactions, 1))  % 最多绘制3个
+        f1 = significant_interactions(i, 1);
+        f2 = significant_interactions(i, 2);
+        
+        subplot(1, min(3, size(significant_interactions, 1)), i);
+        hold on;
+        
+        % 计算交互效应数据
+        interaction_data = zeros(n_levels, n_levels);
+        level_labels = cell(1, n_levels);
+        
+        for l1 = 1:n_levels
+            level_labels{l1} = sprintf('L%d', l1);
+            for l2 = 1:n_levels
+                idx = (orthogonal_matrix(:, f1) == l1) & (orthogonal_matrix(:, f2) == l2);
+                if any(idx)
+                    interaction_data(l1, l2) = mean(Y(idx));
+                end
+            end
+        end
+        
+        % 绘制交互效应线图
+        for l2 = 1:n_levels
+            plot(1:n_levels, interaction_data(:, l2), ...
+                'Color', colors(l2,:), 'LineWidth', 2, ...
+                'DisplayName', sprintf('%s=L%d', factor_names{f2}, l2));
+        end
+        
+        % 设置图形属性
+        grid on;
+        xlabel(sprintf('%s 水平', factor_names{f1}), 'FontSize', 11);
+        ylabel(sprintf('%s 均值', response_names{response_idx}), 'FontSize', 11);
+        title(sprintf('%s × %s 交互效应', factor_names{f1}, factor_names{f2}), ...
+            'FontSize', 12, 'FontWeight', 'bold');
+        
+        xticks(1:n_levels);
+        xticklabels(level_labels);
+        
+        % 添加图例
+        if i == 1
+            legend('Location', 'best', 'FontSize', 10);
+        end
+        
+        hold off;
+    end
+    
+    % 添加总标题
+    sgtitle(sprintf('%s - 显著交互作用效应图', response_names{response_idx}), ...
+        'FontSize', 14, 'FontWeight', 'bold');
+    
+    fprintf('  已生成 %s 的交互效应图。\n', response_names{response_idx});
+end
+
+fprintf('\n========== 交互项响应面绘图完成 ==========\n\n');
+
+% ========== 辅助函数 ==========
+
+% 获取固定水平文本
+function text = get_fixed_levels_text(other_factors, fixed_levels, factor_names)
+    text = '';
+    for idx = 1:length(other_factors)
+        f = other_factors(idx);
+        text = sprintf('%s%s=L%d\n', text, factor_names{f}, fixed_levels(f));
+    end
+    if ~isempty(text)
+        text = text(1:end-1);  % 去除最后一个换行符
+    end
+end
